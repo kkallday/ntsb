@@ -3,25 +3,41 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"regexp"
 
 	"github.com/concourse/atc"
+	"github.com/concourse/atc/event"
 	"github.com/concourse/fly/rc"
 	"github.com/concourse/go-concourse/concourse"
 )
 
 func main() {
-	var jobName string
+	var (
+		jobName string
+		pattern string
+	)
+
 	flag.StringVar(&jobName, "j", "", "name of concourse job")
+	flag.StringVar(&pattern, "p", "", "pattern to search in build log")
 	flag.Parse()
 
-	err := mainWithError(jobName)
+	err := mainWithError(jobName, pattern)
 	if err != nil {
 		log.Fatalf("error: %s", err)
 	}
 }
 
-func mainWithError(requestedJobName string) error {
+func mainWithError(requestedJobName, pattern string) error {
+	if requestedJobName == "" {
+		return fmt.Errorf("job name is required\n")
+	}
+
+	if pattern == "" {
+		return fmt.Errorf("pattern is required\n")
+	}
+
 	const verbose = false
 	target, err := rc.LoadTarget("releng", verbose)
 	if err != nil {
@@ -65,9 +81,44 @@ func mainWithError(requestedJobName string) error {
 		}
 	}
 
+	client := target.Client()
+	buildsWithPattern := []atc.Build{}
+
 	for _, b := range allFailingBuilds {
-		log.Printf("failure! %+v\n", b)
+		matched := false
+
+		eventSource, err := client.BuildEvents(fmt.Sprintf("%d", b.ID))
+		if err != nil {
+			return err
+		}
+
+		for {
+			ev, err := eventSource.NextEvent()
+			if err != nil {
+				if err == io.EOF {
+					break
+				} else {
+					return fmt.Errorf("failed to parse next event: %s\n", err)
+				}
+			}
+
+			if e, ok := ev.(event.Log); ok {
+				matched, err = regexp.MatchString(pattern, e.Payload)
+				if err != nil {
+					return fmt.Errorf("failed to perform regexp: %s\n", err)
+				}
+				if matched {
+					buildsWithPattern = append(buildsWithPattern, b)
+					break
+				}
+			}
+		}
+
+		eventSource.Close()
+		break
 	}
+
+	fmt.Printf("%d builds matched\n", len(buildsWithPattern))
 
 	return nil
 }
