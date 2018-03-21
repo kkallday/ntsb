@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"path"
 	"regexp"
 
 	"github.com/concourse/atc"
@@ -61,11 +62,7 @@ func mainWithError(requestedJobName, pattern string) error {
 
 	var allFailingBuilds []atc.Build
 	for _, p := range pipelines {
-		pipelineBuilds, _, found, err := team.JobBuilds(
-			p.Name,
-			requestedJobName,
-			page,
-		)
+		pipelineBuilds, _, found, err := team.JobBuilds(p.Name, requestedJobName, page)
 		if err != nil {
 			return fmt.Errorf("job-builds: %s", err)
 		}
@@ -85,8 +82,6 @@ func mainWithError(requestedJobName, pattern string) error {
 	buildsWithPattern := []atc.Build{}
 
 	for _, b := range allFailingBuilds {
-		matched := false
-
 		eventSource, err := client.BuildEvents(fmt.Sprintf("%d", b.ID))
 		if err != nil {
 			return err
@@ -103,7 +98,7 @@ func mainWithError(requestedJobName, pattern string) error {
 			}
 
 			if e, ok := ev.(event.Log); ok {
-				matched, err = regexp.MatchString(pattern, e.Payload)
+				matched, err := regexp.MatchString(pattern, e.Payload)
 				if err != nil {
 					return fmt.Errorf("failed to perform regexp: %s\n", err)
 				}
@@ -115,10 +110,13 @@ func mainWithError(requestedJobName, pattern string) error {
 		}
 
 		eventSource.Close()
-		break
 	}
 
 	fmt.Printf("%d builds matched\n", len(buildsWithPattern))
+	for _, b := range buildsWithPattern {
+		fmt.Println(path.Join(target.URL(), "teams", b.TeamName, "pipelines", b.PipelineName,
+			"jobs", b.JobName, "builds", b.Name))
+	}
 
 	return nil
 }
