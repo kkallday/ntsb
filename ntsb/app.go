@@ -3,6 +3,7 @@ package ntsb
 import (
 	"fmt"
 	"io"
+	"path"
 	"regexp"
 
 	"github.com/concourse/atc"
@@ -25,12 +26,14 @@ func NewApp(flagSet flagSet, rcLoadTarget func(target rc.TargetName, tracing boo
 
 func (a App) Run(args []string) error {
 	var (
-		jobName string
-		pattern string
+		jobName    string
+		pattern    string
+		buildCount int
 	)
 
 	a.flagSet.StringVar(&jobName, "j", "", "name of concourse job")
 	a.flagSet.StringVar(&pattern, "p", "", "pattern to search in build log")
+	a.flagSet.IntVar(&buildCount, "c", 200, "how many builds to search")
 	a.flagSet.Parse(args)
 
 	if jobName == "" {
@@ -39,6 +42,10 @@ func (a App) Run(args []string) error {
 
 	if pattern == "" {
 		return fmt.Errorf("pattern is required\n")
+	}
+
+	if buildCount < 0 {
+		return fmt.Errorf("count must be a positive integer\n")
 	}
 
 	const verbose = false
@@ -52,16 +59,15 @@ func (a App) Run(args []string) error {
 		return err
 	}
 
-	const pageSize = 200
-	page := concourse.Page{Limit: pageSize}
+	page := concourse.Page{Limit: buildCount}
 
 	team := target.Team()
-
 	pipelines, err := team.ListPipelines()
 	if err != nil {
 		return fmt.Errorf("pipelines: %s", err)
 	}
 
+	// get all failing builds
 	var allFailingBuilds []atc.Build
 	for _, p := range pipelines {
 		pipelineBuilds, _, found, err := team.JobBuilds(
@@ -84,12 +90,11 @@ func (a App) Run(args []string) error {
 		}
 	}
 
+	// collect builds with logs containing specified pattern
 	client := target.Client()
 	buildsWithPattern := []atc.Build{}
 
 	for _, b := range allFailingBuilds {
-		matched := false
-
 		eventSource, err := client.BuildEvents(fmt.Sprintf("%d", b.ID))
 		if err != nil {
 			return err
@@ -106,7 +111,7 @@ func (a App) Run(args []string) error {
 			}
 
 			if e, ok := ev.(event.Log); ok {
-				matched, err = regexp.MatchString(pattern, e.Payload)
+				matched, err := regexp.MatchString(pattern, e.Payload)
 				if err != nil {
 					return fmt.Errorf("failed to perform regexp: %s\n", err)
 				}
@@ -122,6 +127,11 @@ func (a App) Run(args []string) error {
 	}
 
 	fmt.Printf("%d builds matched\n", len(buildsWithPattern))
+
+	for _, b := range buildsWithPattern {
+		fmt.Println(path.Join(target.URL(), "teams", b.TeamName, "pipelines", b.PipelineName,
+			"jobs", b.JobName, "builds", b.Name))
+	}
 
 	return nil
 }
