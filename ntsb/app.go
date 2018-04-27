@@ -12,17 +12,14 @@ import (
 )
 
 type App struct {
-	flagSet flagSet
+	flagSet      flagSet
+	rcLoadTarget func(target rc.TargetName, tracing bool) (rc.Target, error)
 }
 
-type flagSet interface {
-	StringVar(p *string, name string, value string, usage string)
-	Parse(args []string) error
-}
-
-func NewApp(flagSet flagSet) App {
+func NewApp(flagSet flagSet, rcLoadTarget func(target rc.TargetName, tracing bool) (rc.Target, error)) App {
 	return App{
-		flagSet: flagSet,
+		flagSet:      flagSet,
+		rcLoadTarget: rcLoadTarget,
 	}
 }
 
@@ -45,7 +42,7 @@ func (a App) Run(args []string) error {
 	}
 
 	const verbose = false
-	target, err := rc.LoadTarget("releng", verbose)
+	target, err := a.rcLoadTarget("releng", verbose)
 	if err != nil {
 		return err
 	}
