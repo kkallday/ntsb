@@ -1,7 +1,6 @@
 package ntsb
 
 import (
-	"flag"
 	"fmt"
 	"io"
 	"regexp"
@@ -12,10 +11,19 @@ import (
 	"github.com/concourse/go-concourse/concourse"
 )
 
-type App struct{}
+type App struct {
+	flagSet flagSet
+}
 
-func NewApp() App {
-	return App{}
+type flagSet interface {
+	StringVar(p *string, name string, value string, usage string)
+	Parse(args []string) error
+}
+
+func NewApp(flagSet flagSet) App {
+	return App{
+		flagSet: flagSet,
+	}
 }
 
 func (a App) Run(args []string) error {
@@ -24,9 +32,9 @@ func (a App) Run(args []string) error {
 		pattern string
 	)
 
-	flag.StringVar(&jobName, "j", "", "name of concourse job")
-	flag.StringVar(&pattern, "p", "", "pattern to search in build log")
-	flag.Parse()
+	a.flagSet.StringVar(&jobName, "j", "", "name of concourse job")
+	a.flagSet.StringVar(&pattern, "p", "", "pattern to search in build log")
+	a.flagSet.Parse(args)
 
 	if jobName == "" {
 		return fmt.Errorf("job name is required\n")

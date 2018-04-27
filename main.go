@@ -1,6 +1,7 @@
 package main
 
 import (
+	"flag"
 	"log"
 	"os"
 
@@ -8,7 +9,9 @@ import (
 )
 
 func main() {
-	app := ntsb.NewApp()
+	flagSet := flag.NewFlagSet("ntsb", flag.ExitOnError)
+
+	app := ntsb.NewApp(flagSet)
 	err := app.Run(os.Args[1:])
 	if err != nil {
 		log.Fatalf("error: %s", err)
