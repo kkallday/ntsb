@@ -2,135 +2,89 @@ package ntsb
 
 import (
 	"fmt"
-	"io"
-	"path"
 	"regexp"
 
-	"github.com/concourse/atc"
-	"github.com/concourse/atc/event"
-	"github.com/concourse/fly/rc"
-	"github.com/concourse/go-concourse/concourse"
+	concoursefly "github.com/kkallday/ntsb/concourse"
 )
 
 type App struct {
-	flagSet      flagSet
-	rcLoadTarget func(target rc.TargetName, tracing bool) (rc.Target, error)
+	concourse concourse
+	logger    logger
 }
 
-func NewApp(flagSet flagSet, rcLoadTarget func(target rc.TargetName, tracing bool) (rc.Target, error)) App {
+//go:generate counterfeiter . concourse
+type concourse interface {
+	BuildOutput(bid int) (string, error)
+	Builds(pipelineName string) ([]concoursefly.Build, error)
+	TargetInfo() (concoursefly.TargetInfo, error)
+	Pipelines() ([]concoursefly.Pipeline, error)
+}
+
+//go:generate counterfeiter . logger
+type logger interface {
+	Println(...interface{})
+}
+
+func NewApp(concourse concourse, logger logger) App {
 	return App{
-		flagSet:      flagSet,
-		rcLoadTarget: rcLoadTarget,
+		concourse: concourse,
+		logger:    logger,
 	}
 }
 
-func (a App) Run(args []string) error {
-	var (
-		jobName    string
-		pattern    string
-		buildCount int
-	)
-
-	a.flagSet.StringVar(&jobName, "j", "", "name of concourse job")
-	a.flagSet.StringVar(&pattern, "p", "", "pattern to search in build log")
-	a.flagSet.IntVar(&buildCount, "c", 200, "how many builds to search")
-	a.flagSet.Parse(args)
-
-	if jobName == "" {
-		return fmt.Errorf("job name is required\n")
-	}
-
-	if pattern == "" {
-		return fmt.Errorf("pattern is required\n")
-	}
-
-	if buildCount < 0 {
-		return fmt.Errorf("count must be a positive integer\n")
-	}
-
-	const verbose = false
-	target, err := a.rcLoadTarget("releng", verbose)
+func (a App) Run(pattern string) error {
+	targetInfo, err := a.concourse.TargetInfo()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	err = target.Validate()
+	/*
+		if targetInfo.Expired {
+			panic(errors.New("session expired, please login"))
+		}
+	*/
+
+	pipelines, err := a.concourse.Pipelines()
 	if err != nil {
-		return err
+		panic(err)
 	}
 
-	page := concourse.Page{Limit: buildCount}
+	var urlsToMatchingBuilds []string
 
-	team := target.Team()
-	pipelines, err := team.ListPipelines()
-	if err != nil {
-		return fmt.Errorf("pipelines: %s", err)
-	}
-
-	// get all failing builds
-	var allFailingBuilds []atc.Build
-	for _, p := range pipelines {
-		pipelineBuilds, _, found, err := team.JobBuilds(
-			p.Name,
-			jobName,
-			page,
-		)
+	for _, pipeline := range pipelines {
+		builds, err := a.concourse.Builds(pipeline.Name)
 		if err != nil {
-			return fmt.Errorf("job-builds: %s", err)
+			panic(err)
 		}
 
-		if !found {
-			continue
-		}
-
-		for _, build := range pipelineBuilds {
-			if build.Status == "failed" {
-				allFailingBuilds = append(allFailingBuilds, build)
+		for _, b := range builds {
+			if b.Status != "failed" && b.Status != "errored" {
+				continue
 			}
-		}
-	}
 
-	// collect builds with logs containing specified pattern
-	client := target.Client()
-	buildsWithPattern := []atc.Build{}
-
-	for _, b := range allFailingBuilds {
-		eventSource, err := client.BuildEvents(fmt.Sprintf("%d", b.ID))
-		if err != nil {
-			return err
-		}
-
-		for {
-			ev, err := eventSource.NextEvent()
+			buildOutput, err := a.concourse.BuildOutput(b.ID)
 			if err != nil {
-				if err == io.EOF {
-					break
-				} else {
-					return fmt.Errorf("failed to parse next event: %s\n", err)
-				}
+				panic(err)
 			}
 
-			if e, ok := ev.(event.Log); ok {
-				matched, err := regexp.MatchString(pattern, e.Payload)
-				if err != nil {
-					return fmt.Errorf("failed to perform regexp: %s\n", err)
-				}
-				if matched {
-					buildsWithPattern = append(buildsWithPattern, b)
-					break
-				}
+			matched, err := regexp.MatchString(pattern, buildOutput)
+			if err != nil {
+				panic(err)
 			}
+
+			if !matched {
+				continue
+			}
+
+			url := fmt.Sprintf("%s/teams/%s/pipelines/%s/jobs/%s/builds/%s", targetInfo.URL, b.TeamName, pipeline.Name, b.JobName, b.Name)
+			urlsToMatchingBuilds = append(urlsToMatchingBuilds, url)
 		}
-
-		eventSource.Close()
-		break
 	}
 
-	fmt.Printf("%d builds matched\n", len(buildsWithPattern))
+	a.logger.Println("The following build(s) contain text matching the pattern:")
 
-	for _, b := range buildsWithPattern {
-		fmt.Println(path.Join(target.URL(), "teams", b.TeamName, "pipelines", b.PipelineName,
-			"jobs", b.JobName, "builds", b.Name))
+	for _, url := range urlsToMatchingBuilds {
+		a.logger.Println(url)
 	}
 
 	return nil
