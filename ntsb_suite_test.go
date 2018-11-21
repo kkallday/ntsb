@@ -15,7 +15,7 @@ var pathToMain string
 
 func TestNtsb(t *testing.T) {
 	RegisterFailHandler(Fail)
-	RunSpecs(t, "Ntsb Suite")
+	RunSpecs(t, "Ntsb Acceptance Suite")
 }
 
 var _ = BeforeSuite(func() {
