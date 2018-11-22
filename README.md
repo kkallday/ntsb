@@ -3,7 +3,7 @@
 A CLI for investigating build failures in [Concourse](https://concourse-ci.org). Like `grep` but for
 Concourse builds.
 
-(inspired by Concourse aeronautics theme and
+(inspired by Concourse's airport theme and
 [this](https://en.wikipedia.org/wiki/National_Transportation_Safety_Board))
 
 # Usage
