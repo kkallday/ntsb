@@ -1,6 +1,6 @@
 # ntsb
 
-A CLI for investigating build failures in Concourse. Like `grep` but for
+A CLI for investigating build failures in [Concourse](https://concourse-ci.org). Like `grep` but for
 Concourse builds.
 
 (inspired by Concourse aeronautics theme and
