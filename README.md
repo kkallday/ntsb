@@ -13,16 +13,16 @@ https://concourse.example.com/teams/my-team-1/pipelines/cool-pipeline/jobs/cool-
 https://concourse.example.com/teams/my-team-4/pipelines/boring-pipeline/jobs/boring-job-a/builds/2
 ```
 
-# Building
+# Build and Testing
 
-To run tests:
+To run tests (requires [`ginkgo`](https://github.com/onsi/ginkgo)):
 ```bash
 $ make test
 ```
 
 To build:
 ```bash
-$ make
+$ make build
 ```
 
 To install `ntsb` on $PATH:
