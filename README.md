@@ -6,7 +6,7 @@ Concourse builds.
 # Usage
 
 ```bash
-$ ntsb --target my-team-target --pattern 'TLS handshake'
+$ ntsb --target my-team-target --pattern 'TLS handshake timeout'
 The following build(s) contain text matching the pattern:
 https://concourse.example.com/teams/my-team-1/pipelines/cool-pipeline/jobs/cool-job-a/builds/1
 https://concourse.example.com/teams/my-team-1/pipelines/cool-pipeline/jobs/cool-job-z/builds/1
